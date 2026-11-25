@@ -55,6 +55,7 @@ export class Tunnel {
     this.ws = input.ws
     this.ready = false
     this.alive = true
+    this.misses = 0
     /** @type {Map<number, unknown>} */
     this.streams = new Map()
     this.nextStreamId = 1
@@ -275,11 +276,15 @@ export class TunnelRegistry {
     ws.on('message', (data, isBinary) => {
       this.#onFrame(tunnel, data, isBinary)
     })
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
       if (this.live.get(tunnel.id) === tunnel) this.live.delete(tunnel.id)
       this.broker?.abortAll(tunnel, 'tunnel closed')
       tunnel.ready = false
-      this.logger.info('tunnel offline', { slug: tunnel.slug.slice(0, 6) })
+      this.logger.info('tunnel offline', {
+        slug: tunnel.slug.slice(0, 6),
+        code,
+        reason: reason.toString('utf8').slice(0, 120),
+      })
     })
     ws.on('error', error => {
       this.logger.warn('tunnel socket error', {
@@ -451,10 +456,21 @@ export class TunnelRegistry {
   #sweep() {
     for (const tunnel of this.live.values()) {
       if (!tunnel.alive) {
-        tunnel.close(CLOSE.NORMAL, 'heartbeat timeout')
-        continue
+        tunnel.misses += 1
+        if (tunnel.misses >= 2) {
+          tunnel.close(CLOSE.NORMAL, 'heartbeat timeout')
+          continue
+        }
+      } else {
+        tunnel.misses = 0
       }
       tunnel.alive = false
+      // An application-level ping is forwarded as a text data frame by
+      // WebSocket-aware proxies and load balancers, unlike protocol pings which
+      // some of them ignore for idle accounting. The plugin already answers
+      // `{type:'ping'}` with `{type:'pong'}` and `#onFrame` marks the tunnel
+      // alive for any inbound message.
+      tunnel.send({ type: 'ping' })
       try {
         tunnel.ws.ping()
       } catch {

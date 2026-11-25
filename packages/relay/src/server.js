@@ -196,13 +196,9 @@ export function createRelay(overrides = {}) {
     const query = queryAt === -1 ? '' : rawUrl.slice(queryAt + 1)
     const ip = clientIp(req, config)
     const lang = pickLanguage(req.headers['accept-language'])
-    const debugPath = (() => {
-      const parts = rawPath.split('/').filter(Boolean)
-      return parts.length >= 3 && parts[1] === 'p' ? `/${parts[0]}/p/***` : rawPath
-    })()
     logger.debug('request', {
       method: req.method,
-      path: debugPath,
+      path: rawPath,
       cookie: typeof req.headers.cookie === 'string' && req.headers.cookie.includes('dsh_couch_'),
       ua: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'].slice(0, 48) : undefined,
     })

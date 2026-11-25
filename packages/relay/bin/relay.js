@@ -13,7 +13,11 @@ let relay
 try {
   relay = createRelay()
   await relay.listen()
-  console.log(`dsh-couch-relay: public base ${relay.url}`)
+  if (relay.config.publicHost !== '') {
+    console.log(`dsh-couch-relay: public base ${relay.config.publicScheme}://${relay.config.publicHost}/`)
+  } else {
+    console.log('dsh-couch-relay: public base is derived from the Host the DSH plugin connects to; set PUBLIC_HOST to pin it.')
+  }
   console.log('dsh-couch-relay: open DeepSeek Harness, click the phone icon, and enter this address.')
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error))

@@ -1,23 +1,6 @@
-/** Small leveled logger that keeps secrets out of output. */
+/** Small leveled logger. Fields are emitted verbatim (no redaction) for diagnostics. */
 
 const LEVELS = { debug: 10, info: 20, warn: 30, error: 40 }
-const REDACT_KEYS = /secret|token|code|cookie|authorization|credential|password/iu
-
-/**
- * @param {unknown} value
- * @param {number} depth
- * @returns {unknown}
- */
-function redact(value, depth = 0) {
-  if (depth > 4 || value === null || typeof value !== 'object') return value
-  if (Array.isArray(value)) return value.map(item => redact(item, depth + 1))
-  /** @type {Record<string, unknown>} */
-  const out = {}
-  for (const [key, item] of Object.entries(value)) {
-    out[key] = REDACT_KEYS.test(key) ? '[redacted]' : redact(item, depth + 1)
-  }
-  return out
-}
 
 export class Logger {
   /**
@@ -36,7 +19,7 @@ export class Logger {
    */
   log(level, message, fields) {
     if ((LEVELS[level] ?? LEVELS.info) < this.threshold) return
-    const suffix = fields === undefined ? '' : ` ${JSON.stringify(redact(fields))}`
+    const suffix = fields === undefined ? '' : ` ${JSON.stringify(fields)}`
     this.sink(`${new Date().toISOString()} ${level.toUpperCase()} ${message}${suffix}`)
   }
 

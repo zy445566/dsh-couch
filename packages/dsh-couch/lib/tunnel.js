@@ -478,6 +478,10 @@ export class TunnelClient extends EventEmitter {
       })
       ws.on('close', (code, reason) => {
         if (stream.closed) return
+        log.warn('local DSH websocket closed', {
+          code,
+          reason: reason.toString('utf8').slice(0, 120),
+        })
         stream.closed = true
         this.sockets.delete(id)
         this.#send({ type: 'ws.close', id, code: validCloseCode(code) ? code : 1000, reason: reason.toString('utf8').slice(0, 120) })

@@ -276,6 +276,7 @@ export class Broker {
       queueBytes: 0,
       heartbeat: undefined,
       alive: true,
+      misses: 0,
       timer: undefined,
     }
     this.#register(tunnel, stream)
@@ -320,6 +321,8 @@ export class Broker {
     ws.on('message', (data, isBinary) => {
       if (stream.closed) return
       this.#touch(stream)
+      stream.alive = true
+      stream.misses = 0
       const payload = Buffer.isBuffer(data) ? data : Buffer.from(data)
       if (!stream.opened) {
         stream.queue.push({ kind: isBinary ? KIND.WS_BINARY : KIND.WS_TEXT, payload })
@@ -332,11 +335,20 @@ export class Broker {
       }
       this.#forwardWs(stream, isBinary ? KIND.WS_BINARY : KIND.WS_TEXT, payload)
     })
-    ws.on('pong', () => { stream.alive = true })
+    ws.on('pong', () => {
+      stream.alive = true
+      stream.misses = 0
+    })
     ws.on('error', () => {
       this.#closeWs(stream, 1011, 'phone socket error')
     })
     ws.on('close', (code, reason) => {
+      this.logger.info('phone websocket closed', {
+        code,
+        reason: reason.toString('utf8').slice(0, 120),
+        opened: stream.opened,
+        relayClose: stream.relayClose ?? null,
+      })
       if (stream.closed) return
       stream.tunnel.send({
         type: 'ws.close',
@@ -349,8 +361,13 @@ export class Broker {
     stream.heartbeat = setInterval(() => {
       if (stream.closed) return
       if (!stream.alive) {
-        this.#closeWs(stream, 1001, 'heartbeat timeout')
-        return
+        stream.misses = (stream.misses ?? 0) + 1
+        if (stream.misses >= 2) {
+          this.#closeWs(stream, 1001, 'heartbeat timeout')
+          return
+        }
+      } else {
+        stream.misses = 0
       }
       stream.alive = false
       try { ws.ping() } catch { /* closed */ }
@@ -382,6 +399,12 @@ export class Broker {
    */
   #closeWs(stream, code, reason) {
     if (stream.closed) return
+    stream.relayClose = reason
+    this.logger.info('closing phone websocket', {
+      code,
+      reason,
+      opened: stream.opened,
+    })
     if (stream.ws !== undefined) {
       try { stream.ws.close(code, reason.slice(0, 120)) } catch { /* closed */ }
     }
@@ -467,6 +490,7 @@ export class Broker {
       case 'ws.reject': {
         if (stream.kind !== 'ws') return
         const status = typeof message.status === 'number' ? message.status : 502
+        this.logger.warn('upstream DSH websocket rejected', { status })
         this.#closeWs(stream, 1011, `upstream rejected (${status})`)
         return
       }
@@ -474,6 +498,7 @@ export class Broker {
         if (stream.kind !== 'ws') return
         const code = typeof message.code === 'number' && validCloseCode(message.code) ? message.code : 1000
         const reason = typeof message.reason === 'string' ? message.reason : ''
+        this.logger.info('upstream DSH websocket closed', { code, reason })
         this.#closeWs(stream, code, reason)
         return
       }
@@ -582,6 +607,9 @@ export class Broker {
   abortAll(tunnel, reason) {
     const streams = this.byTunnel.get(tunnel.id)
     if (streams === undefined) return
+    if (streams.size > 0) {
+      this.logger.info('aborting phone streams', { count: streams.size, reason })
+    }
     for (const stream of [...streams.values()]) {
       if (stream.kind === 'http') {
         if (!stream.responseStarted && !stream.closed) plain(stream.res, 503, reason)
