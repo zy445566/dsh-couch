@@ -1,0 +1,21 @@
+{
+  "name": "dsh-couch-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@9.12.3",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sync-protocol": "node scripts/sync-protocol.mjs",
+    "test": "node scripts/sync-protocol.mjs && node --test \"packages/**/tests/*.test.js\"",
+    "test:protocol": "node --test \"packages/protocol/tests/*.test.js\"",
+    "test:relay": "node scripts/sync-protocol.mjs && node --test \"packages/relay/tests/*.test.js\"",
+    "test:plugin": "node scripts/sync-protocol.mjs && node --test \"packages/dsh-couch/tests/*.test.js\"",
+    "relay": "node packages/relay/bin/relay.js",
+    "pack:plugin": "pnpm --filter @zy445566/dsh-couch pack",
+    "docker:build": "docker compose -f docker/docker-compose.yml build",
+    "docker:up": "docker compose -f docker/docker-compose.yml up -d --build"
+  }
+}

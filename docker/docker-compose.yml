@@ -1,0 +1,36 @@
+services:
+  dsh-couch-relay:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: dsh-couch-relay:0.1.0
+    restart: unless-stopped
+    environment:
+      PORT: 8787
+      HOST: 0.0.0.0
+      DATA_DIR: /data
+      # Public authority used in the QR code. Leave empty to reuse the Host
+      # header of the plugin's control connection.
+      PUBLIC_HOST: ${PUBLIC_HOST:-}
+      PUBLIC_SCHEME: ${PUBLIC_SCHEME:-http}
+      MAX_TUNNELS: ${MAX_TUNNELS:-50}
+      PAIR_TTL_MS: ${PAIR_TTL_MS:-600000}
+      PAIR_MAX_ATTEMPTS: ${PAIR_MAX_ATTEMPTS:-5}
+      REGISTER_TOKEN: ${REGISTER_TOKEN:-}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      # TLS_CERT_FILE: /certs/fullchain.pem
+      # TLS_KEY_FILE: /certs/privkey.pem
+    ports:
+      - "${RELAY_PORT:-8787}:8787"
+    volumes:
+      - dsh-couch-data:/data
+      # - ./certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8787/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  dsh-couch-data:

@@ -1,0 +1,14 @@
+{
+  "name": "@zy445566/dsh-couch-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Wire protocol codec shared by the dsh-couch relay and DSH plugin.",
+  "exports": {
+    ".": "./src/protocol.js"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT"
+}

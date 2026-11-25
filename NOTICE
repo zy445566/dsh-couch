@@ -1,0 +1,4 @@
+This project includes the following third-party software:
+
+- ws (https://github.com/websockets/ws) — MIT License.
+- qrcode-generator (https://github.com/kazuhikoarase/qrcode-generator) — MIT License.

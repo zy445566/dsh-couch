@@ -1,0 +1,9 @@
+node_modules/
+data/
+certs/
+*.tgz
+*.log
+.env
+.env.local
+coverage/
+.tmp/

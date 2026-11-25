@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Remote control (QR)",
+    "description": "Pair a phone with a QR code and a 10-minute pairing code to control this DeepSeek Harness through a self-hosted relay. Deploy @zy445566/dsh-couch-relay first. A paired phone has full owner-level control, including tools and approvals."
+  }
+}

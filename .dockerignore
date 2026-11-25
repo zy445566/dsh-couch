@@ -1,0 +1,10 @@
+.git
+node_modules
+packages/*/node_modules
+data
+certs
+*.tgz
+*.log
+.env
+coverage
+.tmp

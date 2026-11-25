@@ -1,0 +1,56 @@
+{
+  "name": "@zy445566/dsh-couch",
+  "version": "0.1.0",
+  "description": "Pair a phone by QR code and a 10-minute pairing code to control this DeepSeek Harness through a self-hosted relay.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zy445566/dsh-couch.git",
+    "directory": "packages/dsh-couch"
+  },
+  "homepage": "https://github.com/zy445566/dsh-couch#readme",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.2-rc.5 <0.3.0"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4",
+    "ws": "^8.23.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

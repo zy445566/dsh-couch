@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "手机扫码远程控制",
+    "description": "通过二维码和 10 分钟有效的配对码，把手机连接到自建 relay 服务，远程控制当前 DeepSeek Harness。请先部署 @zy445566/dsh-couch-relay。配对后的手机拥有与桌面相同的完整控制权限，包括工具调用与审批。"
+  }
+}
