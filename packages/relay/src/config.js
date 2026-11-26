@@ -3,6 +3,8 @@
 const DEFAULT_PORT = 8787
 const MAX_PAIR_TTL_MS = 600_000
 const MIN_PAIR_TTL_MS = 1_000
+const DEFAULT_PORTS = { http: 80, https: 443 }
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]'])
 
 /**
  * @param {Record<string, string | undefined>} env
@@ -110,13 +112,40 @@ export function loadConfig(env = process.env, overrides = {}) {
 }
 
 /**
+ * Authority a pinned `PUBLIC_HOST` contributes to generated URLs. An explicit
+ * port always wins. A pinned *loopback* host without one gains the relay's
+ * listening port, so `PUBLIC_HOST=127.0.0.1` on the default `8787` does not
+ * generate `http://127.0.0.1/…` links that point at port 80. Non-loopback
+ * hosts stay verbatim: a named host without a port is normally a reverse proxy
+ * on the scheme's default port.
+ * @param {string} publicHost validated bare host[:port]
+ * @param {'http'|'https'} scheme
+ * @param {number} listenPort actually bound port, or 0 before binding
+ */
+function pinnedAuthority(publicHost, scheme, listenPort) {
+  let url
+  try {
+    url = new URL(`${scheme}://${publicHost}`)
+  } catch {
+    return publicHost
+  }
+  if (url.port !== '' || !LOOPBACK_HOSTNAMES.has(url.hostname)) return publicHost
+  if (!Number.isInteger(listenPort) || listenPort <= 0 || listenPort > 65535) return publicHost
+  if (listenPort === DEFAULT_PORTS[scheme]) return publicHost
+  return `${url.hostname}:${String(listenPort)}`
+}
+
+/**
  * Origin used in generated URLs. A configured PUBLIC_HOST is authoritative;
  * otherwise the Host header of the control connection is reused verbatim.
  * @param {ReturnType<typeof loadConfig>} config
  * @param {string} requestHost
+ * @param {number} [listenPort] port the relay is bound to; defaults to the configured one
  */
-export function publicOriginFor(config, requestHost) {
-  const authority = config.publicHost !== '' ? config.publicHost : sanitizeHost(requestHost)
+export function publicOriginFor(config, requestHost, listenPort = config.port) {
+  const authority = config.publicHost !== ''
+    ? pinnedAuthority(config.publicHost, config.publicScheme, listenPort)
+    : sanitizeHost(requestHost)
   return `${config.publicScheme}://${authority}`
 }
 

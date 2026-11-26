@@ -140,6 +140,8 @@ export class TunnelRegistry {
     this.logger = logger
     /** @type {Map<string, Tunnel>} */
     this.live = new Map()
+    /** Port this registry's relay is bound to; updated once listening. */
+    this.listenPort = config.port
     /** @type {import('./pairing.js').PairingManager | undefined} */
     this.pairing = undefined
     /** @type {import('./broker.js').Broker | undefined} */
@@ -161,6 +163,11 @@ export class TunnelRegistry {
   /** @param {import('./broker.js').Broker} broker */
   setBroker(broker) {
     this.broker = broker
+  }
+
+  /** @param {number} port */
+  setListenPort(port) {
+    this.listenPort = port
   }
 
   /** @param {string} id */
@@ -234,7 +241,11 @@ export class TunnelRegistry {
         return
       }
     }
-    const publicOrigin = publicOriginFor(this.config, header(req.headers, 'host') ?? 'localhost')
+    const publicOrigin = publicOriginFor(
+      this.config,
+      header(req.headers, 'host') ?? 'localhost',
+      this.listenPort,
+    )
     this.wss.handleUpgrade(req, socket, head, ws => {
       this.#adopt(ws, record, publicOrigin)
     })

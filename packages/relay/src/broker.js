@@ -46,6 +46,28 @@ function protocolsOf(header) {
 }
 
 /**
+ * Shape of one Client mux frame for the debug log: frame type plus stream and
+ * endpoint names, never the payload values (uplink items can carry user text).
+ * @param {Buffer} payload
+ * @returns {Record<string, string> | undefined}
+ */
+function frameShape(payload) {
+  if (payload.byteLength > 4096) return undefined
+  let message
+  try {
+    message = JSON.parse(payload.toString('utf8'))
+  } catch {
+    return undefined
+  }
+  if (message === null || typeof message !== 'object') return undefined
+  /** @type {Record<string, string>} */
+  const shape = { type: typeof message.type === 'string' ? message.type : '?' }
+  if (typeof message.streamId === 'string') shape.stream = message.streamId.slice(0, 8)
+  if (typeof message.endpoint === 'string') shape.endpoint = message.endpoint
+  return shape
+}
+
+/**
  * @param {import('node:http').ServerResponse} res
  * @param {number} status
  * @param {string} message
@@ -274,6 +296,10 @@ export class Broker {
       opened: false,
       queue: [],
       queueBytes: 0,
+      inMessages: 0,
+      outMessages: 0,
+      inBytes: 0,
+      outBytes: 0,
       heartbeat: undefined,
       alive: true,
       misses: 0,
@@ -306,6 +332,12 @@ export class Broker {
     stream.ws = ws
     ws.binaryType = 'nodebuffer'
     const headers = filterHeaders(stream.req.headers, DROP_REQUEST)
+    this.logger.debug('phone websocket open', {
+      id: stream.id,
+      url: stream.req.url,
+      protocols: protocolsOf(stream.req.headers['sec-websocket-protocol']),
+      ua: stream.req.headers['user-agent']?.slice(0, 60),
+    })
     if (Buffer.byteLength(JSON.stringify(headers), 'utf8') > LIMITS.MAX_HEADER_BYTES) {
       ws.close(1009, 'headers too large')
       this.#cleanup(stream)
@@ -324,6 +356,14 @@ export class Broker {
       stream.alive = true
       stream.misses = 0
       const payload = Buffer.isBuffer(data) ? data : Buffer.from(data)
+      stream.inMessages += 1
+      stream.inBytes += payload.byteLength
+      this.logger.debug('phone websocket message', {
+        id: stream.id,
+        binary: isBinary,
+        bytes: payload.byteLength,
+        frame: isBinary ? undefined : frameShape(payload),
+      })
       if (!stream.opened) {
         stream.queue.push({ kind: isBinary ? KIND.WS_BINARY : KIND.WS_TEXT, payload })
         stream.queueBytes += payload.byteLength
@@ -348,6 +388,8 @@ export class Broker {
         reason: reason.toString('utf8').slice(0, 120),
         opened: stream.opened,
         relayClose: stream.relayClose ?? null,
+        in: `${String(stream.inMessages)}/${String(stream.inBytes)}B`,
+        out: `${String(stream.outMessages)}/${String(stream.outBytes)}B`,
       })
       if (stream.closed) return
       stream.tunnel.send({
@@ -498,7 +540,12 @@ export class Broker {
         if (stream.kind !== 'ws') return
         const code = typeof message.code === 'number' && validCloseCode(message.code) ? message.code : 1000
         const reason = typeof message.reason === 'string' ? message.reason : ''
-        this.logger.info('upstream DSH websocket closed', { code, reason })
+        this.logger.info('upstream DSH websocket closed', {
+          id: stream.id,
+          code,
+          reason,
+          upstreamCode: typeof message.upstreamCode === 'number' ? message.upstreamCode : null,
+        })
         this.#closeWs(stream, code, reason)
         return
       }
@@ -589,6 +636,8 @@ export class Broker {
    */
   #sendToPhone(stream, kind, payload) {
     if (stream.closed || !stream.opened || stream.ws === undefined) return
+    stream.outMessages += 1
+    stream.outBytes += payload.byteLength
     if (stream.ws.bufferedAmount > WS_HIGH_WATER) {
       this.#closeWs(stream, 1009, 'phone socket is too slow')
       return

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { LIMITS, PROTOCOL_VERSION } from '../lib/protocol.js'
-import { loadConfig } from './config.js'
+import { loadConfig, publicOriginFor } from './config.js'
 import { Logger } from './log.js'
 import { Store } from './store.js'
 import { PairingManager, RelayError } from './pairing.js'
@@ -514,10 +514,12 @@ export function createRelay(overrides = {}) {
       return actualPort
     },
     get url() {
-      const base = config.publicHost !== ''
-        ? `${config.publicScheme}://${config.publicHost}/`
-        : `${config.publicScheme}://${config.host === '0.0.0.0' ? '127.0.0.1' : config.host}:${actualPort}/`
-      return base
+      if (config.publicHost !== '') return `${this.publicBase}/`
+      return `${config.publicScheme}://${config.host === '0.0.0.0' ? '127.0.0.1' : config.host}:${actualPort}/`
+    },
+    /** Origin generated links use when `PUBLIC_HOST` is pinned, or '' when derived from Host. */
+    get publicBase() {
+      return config.publicHost === '' ? '' : publicOriginFor(config, 'localhost', actualPort)
     },
     /** @returns {Promise<number>} */
     async listen() {
@@ -530,11 +532,14 @@ export function createRelay(overrides = {}) {
       })
       const address = server.address()
       actualPort = typeof address === 'object' && address !== null ? address.port : config.port
+      tunnels.setListenPort(actualPort)
       logger.info('relay listening', {
         host: config.host,
         port: actualPort,
         tls: config.tls,
-        publicBase: config.publicHost === '' ? 'derived from Host' : `${config.publicScheme}://${config.publicHost}`,
+        publicBase: config.publicHost === ''
+          ? 'derived from Host'
+          : `${publicOriginFor(config, 'localhost', actualPort)}/`,
       })
       return actualPort
     },

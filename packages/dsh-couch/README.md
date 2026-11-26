@@ -27,3 +27,10 @@ inside the Harness process. DSH restarts do not auto-enable remote access: click
 
 Tested with DeepSeek Harness `0.2.2-rc.5`. See the repository README for relay
 deployment, HTTPS, security details and limitations. MIT licensed.
+
+## Diagnosing a live tunnel
+
+The desktop Host does not print its console anywhere reachable, so the plugin can
+mirror its own log lines to a file when you start DSH with
+`DSH_COUCH_LOG_FILE=<path>` (`DSH_COUCH_DEBUG=1` also enables debug lines). The
+file is appended to and never rotated; unset the variable for normal use.

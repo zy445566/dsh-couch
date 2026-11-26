@@ -484,7 +484,16 @@ export class TunnelClient extends EventEmitter {
         })
         stream.closed = true
         this.sockets.delete(id)
-        this.#send({ type: 'ws.close', id, code: validCloseCode(code) ? code : 1000, reason: reason.toString('utf8').slice(0, 120) })
+        // `code` is what the local DSH sent; an abnormal close (1006) or a frame
+        // without a status (1005) is not sendable, so the relay gets 1000 plus
+        // the raw value for diagnostics.
+        this.#send({
+          type: 'ws.close',
+          id,
+          code: validCloseCode(code) ? code : 1000,
+          reason: reason.toString('utf8').slice(0, 120),
+          upstreamCode: code,
+        })
       })
       ws.on('error', error => {
         if (stream.closed) return

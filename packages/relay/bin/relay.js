@@ -13,8 +13,8 @@ let relay
 try {
   relay = createRelay()
   await relay.listen()
-  if (relay.config.publicHost !== '') {
-    console.log(`dsh-couch-relay: public base ${relay.config.publicScheme}://${relay.config.publicHost}/`)
+  if (relay.publicBase !== '') {
+    console.log(`dsh-couch-relay: public base ${relay.publicBase}/`)
   } else {
     console.log('dsh-couch-relay: public base is derived from the Host the DSH plugin connects to; set PUBLIC_HOST to pin it.')
   }

@@ -10,8 +10,9 @@ import { deviceCookieName } from '../src/crypto.js'
 
 /**
  * @param {Record<string, string | undefined>} [env]
+ * @param {{ publicScheme?: 'http' | 'https', publicHost?: string }} [overrides]
  */
-async function startRelay(env = {}) {
+async function startRelay(env = {}, overrides = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-couch-relay-'))
   const relay = createRelay({
     port: 0,
@@ -21,6 +22,7 @@ async function startRelay(env = {}) {
     rateLimit: false,
     logLevel: 'error',
     env,
+    ...overrides,
   })
   const port = await relay.listen()
   return { relay, port, dir }
@@ -273,6 +275,48 @@ test('tunnel registration and pairing issue a device cookie and proxy HTTP', asy
   } finally {
     tunnel.close()
     await stopRelay(context)
+  }
+})
+
+test('a pinned loopback PUBLIC_HOST gains the listening port in generated links', async () => {
+  const context = await startRelay({ PUBLIC_HOST: '127.0.0.1' })
+  const tunnel = await FakeTunnel.connect(context.port)
+  try {
+    assert.equal(tunnel.hello.publicBase, `http://127.0.0.1:${context.port}`)
+    assert.equal(tunnel.hello.appUrl, `http://127.0.0.1:${context.port}/${tunnel.hello.slug}/`)
+    tunnel.send({ type: 'pair.create', id: 'pair-1', ttlMs: 60_000 })
+    const created = await tunnel.waitFor(message => message.type === 'pair.created')
+    assert.ok(created.pairUrl.startsWith(`http://127.0.0.1:${context.port}/${tunnel.hello.slug}/p/`))
+  } finally {
+    tunnel.close()
+    await stopRelay(context)
+  }
+})
+
+test('a pinned public authority keeps an explicit port and a proxied host verbatim', async () => {
+  const withPort = await startRelay(
+    { PUBLIC_HOST: 'relay.example.test:9443' },
+    { publicScheme: 'https' },
+  )
+  const explicit = await FakeTunnel.connect(withPort.port)
+  try {
+    assert.equal(explicit.hello.publicBase, 'https://relay.example.test:9443')
+    assert.equal(explicit.hello.appUrl, `https://relay.example.test:9443/${explicit.hello.slug}/`)
+  } finally {
+    explicit.close()
+    await stopRelay(withPort)
+  }
+
+  const proxied = await startRelay(
+    { PUBLIC_HOST: 'relay.example.test' },
+    { publicScheme: 'https' },
+  )
+  const implicit = await FakeTunnel.connect(proxied.port)
+  try {
+    assert.equal(implicit.hello.publicBase, 'https://relay.example.test')
+  } finally {
+    implicit.close()
+    await stopRelay(proxied)
   }
 })
 
