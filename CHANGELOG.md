@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1
 
 - Relay: a pinned `PUBLIC_HOST` without a port now gains the relay's listening
   port when it names a loopback host, so `PUBLIC_HOST=127.0.0.1` no longer
