@@ -1,0 +1,202 @@
+name: Publish npm
+
+# Manual publish of @zy445566/dsh-couch.
+#
+# Authentication uses npm Trusted Publishing (OIDC): there is no NPM_TOKEN
+# secret anywhere. npm mints a short-lived credential from the job's GitHub
+# OIDC identity and attaches a provenance attestation automatically.
+#
+# One-time setup on npmjs.com (package Settings -> Publishing access ->
+# Add trusted publisher -> GitHub Actions):
+#   Organization or user: zy445566
+#   Repository:           dsh-couch
+#   Workflow filename:    publish-npm.yml
+#   Environment:          (leave empty)
+# Keep the values in sync with this file: renaming the workflow or adding an
+# `environment:` here invalidates the trust configuration until npm is updated.
+#
+# The package version comes from packages/dsh-couch/package.json unless the
+# `version` input is set. A version that is already published is refused.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish, e.g. 0.1.1 (empty = package.json version)'
+        required: false
+        type: string
+      dist-tag:
+        description: 'npm dist-tag to publish under'
+        required: false
+        default: latest
+        type: string
+      dry-run:
+        description: 'Build and verify the tarball, but do not publish'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write # required by npm Trusted Publishing (OIDC)
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish @zy445566/dsh-couch
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PACKAGE_DIR: packages/dsh-couch
+      PACKAGE_NAME: '@zy445566/dsh-couch'
+      NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
+      REQUESTED_VERSION: ${{ inputs.version }}
+      DIST_TAG: ${{ inputs['dist-tag'] }}
+      DRY_RUN: ${{ inputs['dry-run'] }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # Trusted Publishing needs npm >= 11.5.1 on Node >= 24.0.0. Node 24 bundles
+      # npm 11.x, but pin the major to stay above the OIDC floor on any 24.x tag.
+      - name: Upgrade npm
+        run: |
+          npm install --global npm@11
+          npm --version
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Resolve and verify version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${DRY_RUN}" != "true" ] && [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "::error::Refusing to publish from ${GITHUB_REF}; run the workflow on main (dry runs work on any branch)."
+            exit 1
+          fi
+
+          current="$(node -p "require('./${PACKAGE_DIR}/package.json').version")"
+          version="${REQUESTED_VERSION:-$current}"
+          version="${version#v}"
+
+          semver_re='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if ! [[ "$version" =~ $semver_re ]]; then
+            echo "::error::'${version}' is not a valid semver version."
+            exit 1
+          fi
+
+          if ! [[ "$DIST_TAG" =~ ^[A-Za-z][A-Za-z0-9._-]*$ ]] || [[ "$DIST_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::'${DIST_TAG}' is not a usable npm dist-tag."
+            exit 1
+          fi
+
+          # Refuse to publish twice; a dry run only warns.
+          spec="${PACKAGE_NAME}@${version}"
+          set +e
+          probe="$(npm view "$spec" version 2>&1)"
+          probe_rc=$?
+          set -e
+          if [ "$probe_rc" -eq 0 ]; then
+            if [ "${DRY_RUN}" = "true" ]; then
+              echo "::warning::${spec} is already published; this dry run is a repack only."
+            else
+              echo "::error::${spec} is already published. Bump the version first."
+              exit 1
+            fi
+          elif [[ "$probe" != *E404* && "$probe" != *"404 Not Found"* ]]; then
+            echo "::error::Could not query the registry for ${spec}: ${probe}"
+            exit 1
+          fi
+
+          # Publishing under `latest` must not move it backwards; a dry run only
+          # reports the check, because it never reaches the registry.
+          latest="$(npm view "$PACKAGE_NAME" dist-tags.latest 2>/dev/null || true)"
+          if [ -n "$latest" ] && [ "$DIST_TAG" = "latest" ] && [ "${DRY_RUN}" != "true" ]; then
+            if ! node -e '
+              const [next, latest] = process.argv.slice(1)
+              const parse = (s) => {
+                const m = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?/.exec(s)
+                if (!m) throw new Error(`bad semver: ${s}`)
+                return { core: [+m[1], +m[2], +m[3]], pre: m[4] ? m[4].split(".") : null }
+              }
+              const cmp = (a, b) => {
+                for (let i = 0; i < 3; i++) if (a.core[i] !== b.core[i]) return a.core[i] - b.core[i]
+                if (!a.pre && !b.pre) return 0
+                if (!a.pre) return 1
+                if (!b.pre) return -1
+                for (let i = 0; i < Math.max(a.pre.length, b.pre.length); i++) {
+                  const x = a.pre[i], y = b.pre[i]
+                  if (x === undefined) return -1
+                  if (y === undefined) return 1
+                  const nx = /^\d+$/.test(x), ny = /^\d+$/.test(y)
+                  if (nx && ny) { if (+x !== +y) return +x - +y; continue }
+                  if (nx !== ny) return nx ? -1 : 1
+                  if (x !== y) return x < y ? -1 : 1
+                }
+                return 0
+              }
+              if (cmp(parse(next), parse(latest)) <= 0) process.exit(1)
+            ' "$version" "$latest"; then
+              echo "::error::${version} is not newer than the current latest (${latest}); pick a higher version or a non-latest dist-tag."
+              exit 1
+            fi
+          fi
+
+          # Align package.json so the tarball and the registry agree.
+          if [ "$version" != "$current" ]; then
+            ( cd "$PACKAGE_DIR" && npm version "$version" --no-git-tag-version --allow-same-version )
+            echo "Set ${PACKAGE_DIR}/package.json version to ${version} (was ${current})."
+          fi
+
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${PACKAGE_NAME}@${version} (dist-tag: ${DIST_TAG}, dry run: ${DRY_RUN})."
+
+      - name: Publish
+        shell: bash
+        working-directory: packages/dsh-couch
+        run: |
+          set -euo pipefail
+          args=(--access public --tag "$DIST_TAG")
+          if [ "${DRY_RUN}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          npm publish "${args[@]}"
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### npm publish"
+            echo
+            echo "- Package: \`${PACKAGE_NAME}@${{ steps.meta.outputs.version || 'unknown' }}\`"
+            echo "- dist-tag: \`${DIST_TAG}\`"
+            echo "- Dry run: \`${DRY_RUN}\`"
+            echo "- Ref: \`${GITHUB_REF}\`"
+            echo
+            if [ "${DRY_RUN}" = "true" ]; then
+              echo "Tarball verified only; nothing was published."
+            else
+              echo "Published via OIDC Trusted Publishing; provenance attestation is attached automatically."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

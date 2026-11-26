@@ -118,6 +118,27 @@ plugin state machine.
 
 Publishing the plugin:
 
+Releases go through the manual **Publish npm** workflow
+(`.github/workflows/publish-npm.yml`), which authenticates with npm Trusted
+Publishing (OIDC) — there is no `NPM_TOKEN` secret. One-time setup on npmjs.com
+(the package's Settings → Publishing access → Add trusted publisher → GitHub
+Actions): organization or user `zy445566`, repository `dsh-couch`, workflow
+filename `publish-npm.yml`, environment left empty.
+
+Run the workflow from the Actions tab on `main` and choose:
+
+- `version` — the version to publish; leave empty to use
+  `packages/dsh-couch/package.json`. An already-published version, or one that
+  would move `latest` backwards, is refused.
+- `dist-tag` — `latest` by default; use `next` for a prerelease.
+- `dry-run` — build and verify the tarball without publishing.
+
+The job installs dependencies, syncs the vendored protocol copy, runs
+`pnpm test`, publishes `packages/dsh-couch` with a provenance attestation, and
+summarises the result. The `version` input only rewrites the tarball's
+`package.json`; commit the bump if you want the repository to record it. To
+publish from a local checkout instead:
+
 ```bash
 pnpm sync-protocol
 pnpm test

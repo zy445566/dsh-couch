@@ -107,6 +107,23 @@ relay 测试与插件测试会启动真实 relay + 假 DSH 上游，覆盖配对
 
 发布插件：
 
+走手动的 **Publish npm** workflow（`.github/workflows/publish-npm.yml`），使用
+npm Trusted Publishing（OIDC）认证，仓库里不需要 `NPM_TOKEN` secret。首次使用需在
+npmjs.com 上该包的 Settings → Publishing access → Add trusted publisher 里选择
+GitHub Actions，并填写：组织或用户 `zy445566`、仓库 `dsh-couch`、workflow 文件名
+`publish-npm.yml`、environment 留空。
+
+在 Actions 页面对 `main` 运行该 workflow，可选参数：
+
+- `version`：要发布的版本；留空则使用 `packages/dsh-couch/package.json`。已发布的
+  版本、或会让 `latest` 倒退的版本会被拒绝。
+- `dist-tag`：默认 `latest`；预发布用 `next`。
+- `dry-run`：只构建并校验 tarball，不真正发布。
+
+Job 会安装依赖、同步协议副本、跑 `pnpm test`、发布 `packages/dsh-couch` 并附带
+provenance 证明，最后在 summary 里给出结果。`version` 参数只改写 tarball 里的
+`package.json`；如果希望仓库也记录版本号，请把版本改动提交进去。如需在本地发布：
+
 ```bash
 pnpm sync-protocol
 pnpm test
